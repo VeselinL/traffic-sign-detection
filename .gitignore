@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Roadmap, architecture, notes..
+docs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Datasets and generated data
+data/
+datasets/
+*.ppm
+
+# Model weights and exports
+*.pt
+*.pth
+*.onnx
+*.engine
+*.hef
+
+# Training and experiment outputs
+runs/
+wandb/
+reports/generated/
+
+# Notebook checkpoints
+.ipynb_checkpoints/
