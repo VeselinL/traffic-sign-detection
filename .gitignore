@@ -5,8 +5,11 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 
-# Roadmap, architecture, notes..
-docs/
+# Roadmap, architecture, agent file..
+docs/architecture.md
+docs/PROJECT.md
+docs/roadmap.md
+docs/seminar_paper_outline.md
 
 # Virtual environments
 .venv/
@@ -19,8 +22,7 @@ env/
 .DS_Store
 
 # Datasets and generated data
-data/
-datasets/
+/data/
 *.ppm
 
 # Model weights and exports

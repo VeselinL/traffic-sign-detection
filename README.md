@@ -2,7 +2,7 @@
 
 ![Banner](banner/banner.png)
 
-> **Status:** early scaffolding — this README describes the intended structure and workflow. Sections marked `TBD` will be filled in as decisions are actually made and results actually exist. Don't take numbers/claims below as final; there aren't any yet.
+> **Status:** ready for training — this README describes the intended structure and workflow. Sections marked `TBD` will be filled in as decisions are actually made and results actually exist. Don't take numbers/claims below as final; there aren't any yet.
 
 ## Overview
 
@@ -14,7 +14,7 @@ This project implements a full computer vision pipeline for detecting and classi
 - [ ] Build a standalone, tested image degradation library simulating realistic driving-condition artifacts
 - [ ] Quantify how detection/classification performance changes under each degradation type and severity level
 - [ ] Compare a baseline model against a model retrained on degradation-augmented data
-- [ ] *(Stretch)* Deploy the trained model to embedded hardware (Raspberry Pi + camera) and measure real inference performance
+- [ ] Deploy the trained model to embedded hardware (Raspberry Pi + camera) and measure real inference performance
 
 
 ## Repository Structure
@@ -65,7 +65,7 @@ Class taxonomy decision (full GTSDB class set vs. grouped superclasses): **TBD**
 
 ## Usage
 
-> All commands below are placeholders until the corresponding scripts exist — see `roadmap.md` for what's implemented at each phase.
+> All commands below are placeholders until the corresponding scripts exist.
 
 **Train the baseline model:**
 ```bash
@@ -110,11 +110,11 @@ pytest tests/
 
 ## Hardware Notes
 
-Baseline training is done on CPU (no GPU acceleration used — see `architecture.md` §6 for the reasoning behind this decision given a small dataset and transfer learning from COCO-pretrained weights). Deployment (stretch goal) targets a Raspberry Pi 5 with a Hailo AI HAT+ for on-device NPU inference.
+Baseline training is done on CPU (no GPU acceleration used ). Deployment targets a Raspberry Pi 5 with a Hailo AI HAT+ for on-device NPU inference.
 
 ## Limitations & Future Work
 
-**TBD.** Will be filled in honestly once real experiments produce real limitations — this section is intentionally not written yet rather than filled with generic placeholders.
+**TBD.** Will be filled once real experiments produce real limitations — this section is intentionally not written yet rather than filled with generic placeholders.
 
 ## Acknowledgments
 
