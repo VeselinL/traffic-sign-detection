@@ -37,5 +37,24 @@ runs/
 wandb/
 reports/generated/
 
+# Local project notes
+/PROJECT_NOTES.md
+/experiment_log_template.md
+
+# Keep only the English report PDF
+/reports/*
+!/reports/latex/
+/reports/latex/*
+!/reports/latex/report.pdf
+
+# Public evaluation entrypoints
+/scripts/*
+!/scripts/run_robustness_eval.py
+!/scripts/run_degraded_preprocessing_eval.py
+!/scripts/run_clahe_optimization.py
+
+# Temporary prediction previews
+/temp/
+
 # Notebook checkpoints
 .ipynb_checkpoints/

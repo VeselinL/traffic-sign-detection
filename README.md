@@ -2,122 +2,170 @@
 
 ![Banner](banner/banner.png)
 
-> **Status:** ready for training — this README describes the intended structure and workflow. Sections marked `TBD` will be filled in as decisions are actually made and results actually exist. Don't take numbers/claims below as final; there aren't any yet.
+An AI course project using **YOLOv8n** and the **German Traffic Sign Detection Benchmark (GTSDB)** to detect and classify traffic signs in driving scenes. The project compares input resolutions, analyzes failures, evaluates synthetic robustness, and tests inexpensive gamma and CLAHE preprocessing without retraining the selected detector.
 
-## Overview
+**Status:** resolution comparison, clean-image preprocessing, 30 robustness scenarios, and all 60 separate post-degradation preprocessing evaluations are complete. Architectural improvements and embedded deployment remain future work.
 
-This project implements a full computer vision pipeline for detecting and classifying traffic signs in driving-scene images, using the [GTSDB (German Traffic Sign Detection Benchmark)](https://benchmark.ini.rub.de/gtsdb_news.html) dataset. Beyond training a detector, the project systematically evaluates how detection/classification performance degrades under realistic imaging conditions (blur, low light, noise, compression, low resolution), and tests whether training on degradation-augmented data improves robustness.
+## Dataset and Evaluation
 
-## Project Goals
+- **900 scenes**, 1360×800 pixels, **1,213 annotated signs**, and **43 fine-grained classes**.
+- Fixed split: **480 training images / 681 signs**, **120 validation images / 171 signs**, and **300 test images / 361 signs**.
+- The first 600 scenes use a seeded multilabel-stratified training/validation split (seed 42); test scenes are IDs 00600–00899.
+- Robustness and preprocessing use frozen `models/yolov8n_baseline_1280/best.pt` weights and preserve original images, class definitions, splits, dimensions, and labels.
+- Comparable CPU evaluations use batch size 8, confidence threshold 0.001, NMS IoU 0.7, and no test-time augmentation. Summary precision and recall use the evaluator's F1-selected operating point, not a shared fixed confidence threshold.
 
-- [ ] Train a lightweight object detector (YOLOv8n/s) on GTSDB to localize and classify traffic signs
-- [ ] Build a standalone, tested image degradation library simulating realistic driving-condition artifacts
-- [ ] Quantify how detection/classification performance changes under each degradation type and severity level
-- [ ] Compare a baseline model against a model retrained on degradation-augmented data
-- [ ] Deploy the trained model to embedded hardware (Raspberry Pi + camera) and measure real inference performance
+Small signs and class imbalance are central challenges: a median sign is only 38×37 pixels in the original scene. Downscaling removes details needed to distinguish digits and visually similar classes.
 
+## Clean-Test Results
+
+All methods use the same 300-image test split. Metrics are on a 0–1 scale. Timings are per image on an AMD Ryzen 5 5600 CPU, batch size 8.
+
+| Method | Precision | Recall | mAP50 | mAP50–95 | Correction (ms) | Inference (ms) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| YOLOv8n 640px | 0.4858 | 0.3233 | 0.3534 | 0.2909 | — | 29.0 |
+| YOLOv8n 960px | 0.6009 | 0.4013 | 0.4519 | 0.3938 | — | 72.3 |
+| YOLOv8n 1280px | 0.6919 | 0.4611 | 0.5579 | 0.4921 | 0.0 | 138.4 |
+| 1280px + gamma 0.9 | 0.6781 | 0.4760 | 0.5624 | 0.4993 | 1.0 | 138.1 |
+| 1280px + CLAHE | 0.5448 | 0.5554 | 0.5808 | 0.5188 | 13.6 | 137.1 |
+
+Increasing resolution from 640px to 1280px improves test mAP50–95 by **20.12 percentage points**, with roughly 4.77× the detector inference cost. Qualitative comparisons show additional small-sign detections and improved speed-limit classification, but misses, wrong classes, and false positives remain.
+
+Gamma 0.9 improves clean-test mAP50–95 by **0.73 percentage points** and is supported by validation selection. CLAHE improves it by **2.67 percentage points**, but decreases validation mAP50–95, so its larger test gain is not evidence of consistent improvement. CLAHE operates on the LAB luminance channel with clip limit 2 and an **8×8 grid of regions**, not pixels. Gamma and CLAHE are tested separately, never combined.
+
+Correction times exclude disk I/O and are additional to detector preprocessing, inference, and postprocessing. These are not end-to-end camera or Raspberry Pi latency measurements.
+
+## Robustness Results
+
+Eight independent OpenCV/NumPy corruptions and two separate Albumentations weather simulations are applied at three fixed severities. Each corruption starts from the original image; operations are not stacked. Random operations use recorded seeds, and derived images are saved as lossless PNGs.
+
+| Scenario | Mild mAP50–95 | Medium mAP50–95 | Severe mAP50–95 |
+| --- | ---: | ---: | ---: |
+| Underexposure | 0.4697 | 0.4230 | 0.3405 |
+| Overexposure | 0.4974 | 0.4829 | 0.4740 |
+| Low contrast | 0.5005 | 0.4869 | 0.4367 |
+| Gaussian noise | 0.4482 | 0.3437 | 0.2428 |
+| Defocus blur | 0.4442 | 0.2484 | 0.0792 |
+| Motion blur | 0.3565 | 0.1588 | 0.0332 |
+| Resolution loss | 0.5012 | 0.4937 | 0.3557 |
+| JPEG compression | 0.4753 | 0.4027 | 0.2584 |
+| Synthetic fog | 0.1585 | 0.1472 | 0.1373 |
+| Synthetic rain (compound) | 0.4106 | 0.3004 | 0.2853 |
+
+Severe motion blur and defocus produce the largest losses; synthetic fog is damaging at every tested severity. Mild overexposure, low contrast, and resolution loss slightly exceed clean performance on this split, so a nominal degradation does not necessarily lower every measured score.
+
+Fog and rain are **synthetic approximations, not proof of real-weather performance**. Rain combines streaks, blur, and darkening and is reported separately from single-factor corruptions.
+
+### Preprocessing After Degradation
+
+Frozen gamma 0.9 and CLAHE configurations are applied independently **after** each degradation, yielding 60 additional evaluations. Each result is compared with its matching uncorrected degradation.
+
+| Correction | Evaluations | Improved scenarios | Worsened scenarios | Mean signed Δ mAP50–95 |
+| --- | ---: | ---: | ---: | ---: |
+| Gamma 0.9 | 30 | 15 | 15 | +0.0009 |
+| CLAHE, clip 2 / grid 8×8 | 30 | 14 | 16 | −0.0025 |
+
+Neither correction universally improves robustness. Brightening helps some underexposed scenes; local contrast enhancement can amplify noise or background texture. These averages describe the selected synthetic scenarios, not a real driving-condition distribution.
 
 ## Repository Structure
 
-```
-traffic-sign-perception/
-├── configs/          # experiment configs (YAML) — TBD, populated as experiments are defined
+```text
 ├── src/
-│   ├── data/          # GTSDB → YOLO conversion, dataset splitting
-│   ├── degrade/        # image degradation library (blur, noise, contrast, JPEG, resolution)
-│   ├── eval/            # metrics, confusion matrix, failure case analysis
-│   ├── train.py
-│   └── infer.py
-├── deploy/            # embedded/deployment code (stretch goal, Phase 8)
-├── tests/             # pytest suite
-├── scripts/           # CLI entrypoints
-├── notebooks/          # exploratory visualization only — no pipeline logic lives here
-├── docs/               # dataset notes, robustness findings, working notes
-├── banner/              # README banner image
-├── reports/            # generated plots and final writeup
-├── requirements.txt
-└── README.md
+│   ├── data/                 # Annotation conversion and fixed dataset splits
+│   ├── degradation/          # Corruptions and synthetic weather transforms
+│   ├── optimization/         # Gamma, CLAHE, and shared dataset verification
+│   ├── train.py              # Original training experiment
+│   └── evaluate.py           # Original evaluation experiment
+├── scripts/
+│   ├── run_robustness_eval.py
+│   ├── run_degraded_preprocessing_eval.py
+│   └── run_clahe_optimization.py
+├── utils/                    # Lossless PPM-to-PNG conversion
+├── notebooks/                # Dataset inspection and prediction visualization
+├── docs/                     # Protocols, dataset notes, and detailed results
+├── plots/                    # Dataset visualizations
+├── reports/latex/report.pdf   # English project report
+├── VALIDATION.md              # Qualitative validation failure analysis
+└── requirements.txt
 ```
 
-## Setup
+Datasets, weights, evaluation outputs, temporary previews, and local working notes are excluded from Git. Only the English PDF is retained from `reports/`; only the three listed entrypoints are retained from `scripts/`.
 
-> TBD once dependencies are pinned in Phase 0.
+## Setup and Local Inputs
+
+Create a Python environment and install dependencies:
 
 ```bash
-git clone <repo-url>
-cd traffic-sign-perception
-python3.11 -m venv venv
-source venv/bin/activate   # or venv\Scripts\activate on Windows
-pip install -r requirements.txt
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
 ```
 
-## Dataset
+The recorded evaluation environment uses Python 3.12.3. On Windows, activate with `.venv\Scripts\activate`.
 
-The project uses GTSDB, obtained from the official [Institut für Neuroinformatik, Ruhr-Universität Bochum](https://benchmark.ini.rub.de/gtsdb_news.html) benchmark page. Raw data is **not** checked into this repository — see `docs/dataset_notes.md` (TBD) for acquisition and format notes, and run the conversion script below to regenerate the processed dataset locally.
+Obtain GTSDB from the [official benchmark website](https://benchmark.ini.rub.de/gtsdb_news.html). **Dataset files and trained checkpoints are not distributed in this repository.** Evaluation requires:
+
+- `data/GTSDB/dataset/data.yaml`, preserving the original 43-class ordering and `train.txt`, `val.txt`, and `test.txt` split references.
+- Original PPM scenes in `data/GTSDB/dataset/images/` and corresponding YOLO labels in `data/GTSDB/dataset/labels/`.
+- Matching PNG copies and `train_png.txt`, `val_png.txt`, and `test_png.txt` manifests.
+- The frozen checkpoint at `models/yolov8n_baseline_1280/best.pt`.
+
+For an already prepared PPM dataset, create lossless PNG copies and matching manifests:
 
 ```bash
-# TBD — exact commands once conversion scripts exist
-python scripts/download_and_convert_gtsdb.py
-python scripts/make_splits.py
+python utils/convert_ppm_to_png.py
 ```
 
-Class taxonomy decision (full GTSDB class set vs. grouped superclasses): **TBD**, see `docs/dataset_notes.md` once written.
+See [dataset notes](docs/dataset_notes.md) for annotation format and statistics. Evaluation inputs resolve relative to the repository root. The clean preprocessing comparisons verify split IDs and pixel equivalence; a different split or checkpoint cannot reproduce the recorded results.
 
-## Usage
+## Run Evaluations
 
-> All commands below are placeholders until the corresponding scripts exist.
+Verify the clean baseline, then generate and evaluate the 30 degraded test suites:
 
-**Train the baseline model:**
 ```bash
-python src/train.py --config configs/baseline.yaml
-```
-
-**Evaluate a trained model:**
-```bash
-python src/eval/run_eval.py --weights <path_to_weights> --config configs/eval.yaml
-```
-
-**Generate the degraded test suite:**
-```bash
-python scripts/generate_degraded_testset.py
-```
-
-**Run robustness evaluation across all degradation types/severities:**
-```bash
+python scripts/run_robustness_eval.py --clean-only
 python scripts/run_robustness_eval.py
 ```
 
-## Methodology (summary)
+The runner stops before degradation evaluation if clean mAP differs from the recorded reference beyond its configured tolerance. Outputs are saved under `runs/robustness_1280/`.
 
-1. **Baseline training** — fine-tune YOLOv8n on GTSDB, evaluate with standard detection metrics (mAP@0.5, mAP@0.5:0.95, per-class precision/recall).
-2. **Robustness evaluation** — apply controlled degradations (blur, brightness/contrast shift, noise, JPEG compression, resolution reduction) at multiple severity levels to the test set, and measure how each metric changes.
-3. **Augmented retraining** — retrain on a degradation-augmented training set, repeat the robustness evaluation, and compare against the baseline.
-4. *(Stretch)* **Deployment** — export to ONNX, run on Raspberry Pi 5 + Hailo AI HAT+, measure real-world latency/FPS.
-
-Full methodology and findings will be written up in `reports/` and `docs/robustness_findings.md` as the project progresses.
-
-## Results
-
-**TBD.** No results exist yet — this section will contain the baseline metrics table, robustness curves per degradation type, and the baseline-vs-augmented comparison once Phases 3–7 are complete.
-
-## Testing
-
-The degradation library (`src/degrade/`) and dataset conversion logic (`src/data/`) have unit tests under `tests/`, run with:
+Compare CLAHE parameters on validation, then evaluate the frozen comparison configuration on test:
 
 ```bash
-pytest tests/
+python scripts/run_clahe_optimization.py
+python scripts/run_clahe_optimization.py --split test --clip-limits 2 --grid-size 8
 ```
 
-## Hardware Notes
+Outputs are under `runs/optimization_1280_clahe/`. All tested CLAHE settings decrease validation mAP50–95; clip limit 2 is retained for comparison, not as a validation-supported improvement.
 
-Baseline training is done on CPU (no GPU acceleration used ). Deployment targets a Raspberry Pi 5 with a Hailo AI HAT+ for on-device NPU inference.
+After the full robustness run, evaluate separate gamma and CLAHE corrections on all saved degraded suites:
 
-## Limitations & Future Work
+```bash
+python scripts/run_degraded_preprocessing_eval.py
+```
 
-**TBD.** Will be filled once real experiments produce real limitations — this section is intentionally not written yet rather than filled with generic placeholders.
+Outputs are under `runs/degraded_preprocessing_1280/`. Use `--help` for runner-specific output, batch-size, device, and scenario-selection options.
+
+## Documentation
+
+- [English project report](reports/latex/report.pdf)
+- [Validation failure analysis](VALIDATION.md)
+- [Robustness protocol](docs/robustness_evaluation.md) and [results](docs/robustness_results.md)
+- [Gamma optimization](docs/gamma_optimization.md) and [CLAHE optimization](docs/clahe_optimization.md)
+- [Post-degradation preprocessing protocol](docs/degraded_preprocessing_evaluation.md) and [full metric comparison](docs/degraded_preprocessing_results.md)
+
+## Limitations and Future Plans
+
+The test split informed resolution selection and was reused for exploratory comparisons, so results are not estimates from an untouched final holdout. The dataset is small and imbalanced; no confidence intervals or significance tests were computed. Simulated weather does not establish road-deployment reliability.
+
+- **SAHI tiling:** test overlapping image tiles for small signs, selecting tile size, overlap, and merging rules on validation. Measure missed signs, duplicate detections, false positives, and full inference cost.
+- **Bigger models:** compare YOLOv8s or larger detectors on identical splits, with an explicit accuracy–latency budget.
+- **Specialized classifier:** train a CNN on cropped signs to distinguish digits and similar classes. Separate crops by source scene and evaluate detector-produced crops, retaining localization failures.
+- **Balanced data and robustness training:** expand rare classes and difficult scenes; compare class-aware sampling and realistic corruption augmentation while monitoring clean accuracy.
+- **Embedded deployment (Raspberry Pi):** export and benchmark with a camera, potentially using a Hailo AI accelerator. Measure complete capture/preprocessing/inference/postprocessing latency, FPS, memory, and accuracy after export or quantization. No embedded performance is claimed yet.
+- **Stronger evaluation:** reserve a new independent holdout, quantify uncertainty, and evaluate real adverse-weather data before deployment claims.
 
 ## Acknowledgments
 
-- GTSDB dataset: Institut für Neuroinformatik, Ruhr-Universität Bochum
-- Detection framework: [Ultralytics YOLOv8](https://github.com/ultralytics/ultralytics)
-- Supervised by: *TBD*
+- GTSDB: Institut für Neuroinformatik, Ruhr-Universität Bochum.
+- Detection framework: [Ultralytics YOLOv8](https://github.com/ultralytics/ultralytics).
+- Image processing and synthetic weather: OpenCV, NumPy, and Albumentations.

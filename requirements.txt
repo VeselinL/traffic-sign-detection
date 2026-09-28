@@ -3,3 +3,5 @@ numpy~=2.4.4
 matplotlib~=3.11.1
 iterative-stratification~=0.1.9
 PyYAML~=6.0.3
+ultralytics~=8.4.116
+albumentations~=2.0.8
